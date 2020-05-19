@@ -35,7 +35,7 @@ def load_data(data_dir):
 def plot_data(data):
     xseries, yseries = data
     plt.figure()
-    plt.title("Inverse Model Training Loss")
+    plt.title("Forward Model Training Loss")
     plt.xlabel("Epochs")
     plt.ylabel("Loss")
 

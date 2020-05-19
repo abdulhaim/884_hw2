@@ -65,15 +65,15 @@ class PushingEnv(object):
         self.ext_mat = self.robot.cam.get_cam_ext()
         self.int_mat = self.robot.cam.get_cam_int()      
 
-    def move_ee_xyz_and_plot(self, delta_xyz):
+    def move_ee_xyz_and_plot(self, delta_xyz, model_name):
         image = self.get_img()
-        step_size = 0.00015
+        step_size = 0.0015
         num_steps = int(np.linalg.norm(delta_xyz) / step_size)
         step = np.array(delta_xyz) / num_steps
         for i in range(num_steps):
             img = self.get_img()
             im = Image.fromarray((img * 255).astype(np.uint8))
-            im.save("imgs/inverse" + str(i) + ".jpg")
+            im.save(model_name + str(i) + ".jpg")
             out = self.robot.arm.move_ee_xyz(step.tolist(), eef_step=0.015)
         return out
 
@@ -173,14 +173,15 @@ class PushingEnv(object):
                 break
         return start_x, start_y, end_x, end_y
 
-    def execute_push(self, start_x, start_y, end_x, end_y):
+    def execute_push(self, start_x, start_y, end_x, end_y, model_name):
         # move to starting push location
         init_obj = self.get_box_pose()[0][:2]
         step = 0
         self.move_ee_xyz([start_x-self.ee_home[0], start_y-self.ee_home[1], 0])
         self.move_ee_xyz([0, 0, self.ee_min_height-self.ee_rest_height])
         
-        self.move_ee_xyz_and_plot([end_x-start_x, end_y-start_y, 0]) # push
+        self.move_ee_xyz_and_plot([end_x-start_x, end_y-start_y, 0], model_name) # push
+
         # important that we use move_ee_xyz, as set_ee_pose can throw obj in motion
         self.move_ee_xyz([0, 0, self.ee_rest_height-self.ee_min_height])
         
@@ -189,23 +190,23 @@ class PushingEnv(object):
         final_obj = self.get_box_pose()[0][:2]
         return init_obj, final_obj
 
-    def createGif(self):
-        png_dir = "imgs/" 
+    def createGif(self, img_dir, save_name):
         images = []
-        for file_name in os.listdir(png_dir):
+        for file_name in os.listdir(img_dir):
             if file_name.endswith('.jpg'):
-                file_path = os.path.join(png_dir, file_name)
+                file_path = os.path.join(img_dir, file_name)
                 images.append(imageio.imread(file_path))
 
-        imageio.mimsave("inverse_model" +'.gif', images)
+        imageio.mimsave(save_name +'.gif', images)
 
     def plan_inverse_model(self, model, seed=0):
         self.go_home()
         self.reset_box()
         np.random.seed(seed)
         start_x, start_y, end_x, end_y = self.sample_push(self.box_pos[0], self.box_pos[1])
-        init_obj, goal_obj = self.execute_push(start_x=start_x, start_y=start_y, end_x=end_x, end_y=end_y)
-        
+        init_obj, goal_obj = self.execute_push(start_x, start_y, end_x, end_y, "imgs_inverse_ground/ground_truth")
+        self.createGif("imgs_inverse_ground/", "inverse_ground")
+
         ### Write code for visualization ###
         init_obj = torch.FloatTensor(init_obj).unsqueeze(0)
         goal_obj = torch.FloatTensor(goal_obj).unsqueeze(0)
@@ -216,9 +217,9 @@ class PushingEnv(object):
         start_x, start_y, end_x, end_y = push
 
         self.reset_box()       
-        self.execute_push(start_x=start_x, start_y=start_y, end_x=end_x, end_y=end_y)
+        self.execute_push(start_x, start_y, end_x, end_y, "imgs_inverse_predict/prediction")
 
-        self.createGif()
+        self.createGif("imgs_inverse_predict/", "inverse_predict")
 
         final_obj = self.get_box_pose()[0][:2]
         goal_obj = goal_obj.numpy().flatten()
@@ -239,22 +240,59 @@ class PushingEnv(object):
         if np.random.random() < 0.5:
             push_ang -= np.pi
 
-        for _ in range(2):
-            obj_x, obj_y = self.get_box_pose()[0][:2]            
-            start_x, start_y, end_x, end_y = self.sample_push(obj_x=obj_x, obj_y=obj_y, push_len=0.1, push_ang=push_ang)
-            _, goal_obj = self.execute_push(start_x=start_x, start_y=start_y, end_x=end_x, end_y=end_y)
-        
+        obj_x, obj_y = self.get_box_pose()[0][:2]            
+        start_x, start_y, end_x, end_y = self.sample_push(obj_x=obj_x, obj_y=obj_y, push_len=0.1, push_ang=push_ang)
+        _, goal_obj = self.execute_push(start_x, start_y, end_x, end_y, "imgs_inverse_ground_extrapolate/ground_truth")
+        self.createGif("imgs_inverse_ground_extrapolate/", "inverse_ground_extrapolate")
+
         ### Write code for visualization ###
         self.reset_box()        
         goal_obj = torch.FloatTensor(goal_obj).unsqueeze(0)
-        
+        init_obj = torch.FloatTensor(init_obj).unsqueeze(0)
         # Get push from your model. Your model can have a method like "push = self.model.infer(init_obj, goal_obj)"
         push = model.infer(init_obj, goal_obj)
         push = push[0].detach().numpy()
         # Your code should ideally call this twice: once at the start and once when you get intermediate state.
+        start_x, start_y, end_x, end_y = push     
+        self.execute_push(start_x, start_y, end_x, end_y, "imgs_inverse_predict_extrapolate/prediction")
+        self.createGif("imgs_inverse_predict_extrapolate/", "inverse_predict_extrapolate")
+
+        final_obj = self.get_box_pose()[0][:2]
+        goal_obj = goal_obj.numpy().flatten()
+        loss = np.linalg.norm(final_obj-goal_obj)
+        print(f"L2 Distance between final obj position and goal obj position is {loss}")
+        return loss 
+
+    def plan_forward_model_extrapolate(self, model, seed=0):
+        self.go_home()
+        self.reset_box()
+        np.random.seed(seed)
+        init_obj = self.get_box_pose()[0][:2]
+        push_ang = np.pi/3 + np.random.random()*np.pi/3
+        
+        if np.random.random() < 0.5:
+            push_ang -= np.pi
+
+        obj_x, obj_y = self.get_box_pose()[0][:2]            
+        start_x, start_y, end_x, end_y = self.sample_push(obj_x=obj_x, obj_y=obj_y, push_len=0.1, push_ang=push_ang)
+        _, goal_obj = self.execute_push(start_x, start_y, end_x, end_y, "imgs_forward_ground_extrapolate/ground_truth")
+        self.createGif("imgs_forward_ground_extrapolate/", "forward_ground_extrapolate")
+
+        ### Write code for visualization ###
+        self.reset_box()        
+        goal_obj = torch.FloatTensor(goal_obj).unsqueeze(0)
+        init_obj = torch.FloatTensor(init_obj).unsqueeze(0)
+        # Get push from your model. Your model can have a method like "push = self.model.infer(init_obj, goal_obj)"
+        push = call_cem(model, init_obj, goal_obj, self)
+        push = push[0].detach().numpy()
+        # Your code should ideally call this twice: once at the start and once when you get intermediate state.
+        start_x, start_y, end_x, end_y = push     
+        self.execute_push(start_x, start_y, end_x, end_y, "imgs_forward_predict_extrapolate/prediction")
+        self.createGif("imgs_forward_predict_extrapolate/", "forward_predict_extrapolate")
 
         final_obj = self.get_box_pose()[0][:2]
         goal_obj = goal_obj.numpy().flatten()
         loss = np.linalg.norm(final_obj-goal_obj)
         print(f"L2 Distance between final obj position and goal obj position is {loss}")
         return loss                               
+

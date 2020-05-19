@@ -1,5 +1,12 @@
-imgs/*
-runs/*
+imgs_forward_predict/
+imgs_inverse_predict/
+imgs_forward_ground/
+imgs_inverse_ground/
+imgs_inverse_predict_extrapolate/
+imgs_inverse_ground_extrapolate/
+imgs_forward_ground_extrapolate/
+imgs_forward_predict_extrapolate/
+runs/
 __pycache__/
 .DS_Store
 .ipynb_checkpoints/

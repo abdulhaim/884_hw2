@@ -50,10 +50,10 @@ class Model(nn.Module):
 
 	def save(self, model_dir):
 		os.makedirs(model_dir, exist_ok=True)
-		torch.save(self.state_dict(), os.path.join(model_dir, "{}.pth".format(self.name)))
+		torch.save(self.state_dict(), os.path.join(model_dir, "{}.pth".format("inverse")))
 
 	def load(self, model_dir):
-		self.load_state_dict(torch.load(os.path.join(model_dir, "{}.pth".format(self.name))))
+		self.load_state_dict(torch.load(os.path.join(model_dir, "{}.pth".format("inverse"))))
 
 	def infer(self, init_obj, goal_obj):
 		feed = torch.cat((init_obj, goal_obj), axis=1)
@@ -109,6 +109,7 @@ def train_inverse():
 	print("Done")
 	print("Train Loss", get_loss(train_loader, model))
 	print("Test Loss", get_loss(valid_loader,model))
+	model.save("models")
 
 	return model 
 if __name__ == "__main__":
@@ -116,18 +117,18 @@ if __name__ == "__main__":
 	model = train_inverse()
 
 	# Download data from tensorboard, then uncomment
-	data = load_data('losses/')
+	#data = load_data('losses/')
 	#plot_data(data)
 
-	env = PushingEnv(ifRender=False)
-	num_trials = 9
+	#env = PushingEnv(ifRender=False)
+	#num_trials = 9
 
-	loss = env.plan_inverse_model(model)
+	#loss = env.plan_inverse_model(model)
 
-	for run in range(num_trials):
-		loss += env.plan_inverse_model(model, run)
+	# for run in range(num_trials):
+	# 	loss += env.plan_inverse_model(model, run)
 	
-	print("average distance:", loss/(num_trials+1))
+	#print("average distance:", loss/(num_trials+1))
 
 
 
